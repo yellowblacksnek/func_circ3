@@ -13,7 +13,7 @@
 `include "sr_cpu.vh"
 
 `ifndef SIMULATION_CYCLES
-    `define SIMULATION_CYCLES 120
+    `define SIMULATION_CYCLES 1200000000
 `endif
 
 `define EBREAK 32'b00000000000100000000000001110011
@@ -26,7 +26,7 @@ module sm_testbench;
 
     reg         clk;
     reg         rst_n;
-    reg  [ 4:0] regAddr;
+    reg  [ 4:0] regAddr = 5'b0;
     wire [31:0] regData;
     wire        cpuClk;
     
@@ -45,7 +45,7 @@ module sm_testbench;
         .clkDevide ( 4'b0    ),
         .clkEnable ( 1'b1    ),
         .clk       ( cpuClk  ),
-        .regAddr   ( 5'b0    ),
+        .regAddr   ( regAddr ),
         .regData   ( regData )
     );
 
@@ -148,8 +148,7 @@ module sm_testbench;
         disasmInstr();
         
         cycle = cycle + 1;
-//        if (cycle > `SIMULATION_CYCLES | stop)
-        if(stop)
+        if (cycle > `SIMULATION_CYCLES | stop)
             begin
                 cycle = 0;
                 if(stop) $display ("Stopped"); else $display ("Timeout");

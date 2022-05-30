@@ -1,13 +1,3 @@
-/*
- * schoolRISCV - small RISC-V CPU 
- *
- * originally based on Sarah L. Harris MIPS CPU 
- *                   & schoolMIPS project
- * 
- * Copyright(c) 2017-2020 Stanislav Zhelnio 
- *                        Aleksandr Romanov 
- */ 
-
 `timescale 1 ns / 100 ps
 
 `include "sr_cpu.vh"
@@ -29,13 +19,13 @@ module uart_tb;
 
     reg         clk;
     reg         rst_n;
-    reg  [ 4:0] regAddr;
+    reg  [ 4:0] regAddr = 5'b0;
     wire [31:0] regData;
     wire        cpuClk;
     
     reg         uartSerial = 1;
     reg         romWrite = 0;
-    reg   [7:0] dataByte;
+//    reg   [7:0] dataByte;
     
     //simulation debug output
     integer cycle; initial cycle = 0;
@@ -44,17 +34,18 @@ module uart_tb;
     reg [31:0] prev; initial prev = 0;
     integer cur_cycles; initial cur_cycles = 0;
     // ***** DUT start ************************
-
+    wire [31:0] romData;
     sm_top sm_top
     (
         .clkIn     ( clk        ),
         .rst_n     ( rst_n      ),
         .uart_rx_r ( uartSerial ),
         .romWrite_i( romWrite   ),
-        .clkDevide ( 4'b0       ),
+        .romData    ( romData   ),
+        .clkDevide ( 4'b0011       ),
         .clkEnable ( 1'b1       ),
         .clk       ( cpuClk     ),
-        .regAddr   ( 5'b0       ),
+        .regAddr   ( regAddr    ),
         .regData   ( regData    )
     );
 
@@ -204,15 +195,16 @@ module uart_tb;
         
         if(cycle > 20) begin
             romWrite = 1;
-            repeat (2) @(posedge clk);
+            repeat (1) @(posedge clk);
+            romWrite = 0;
             
-            $readmemh ("counter.data", NEW_MEM);
+            $readmemh ("f.data", NEW_MEM);
             
             for (j=0; j<16; j = j+1) begin
                 UART_WRITE_INSTR(NEW_MEM[j]);
+                regAddr = j;
             end
             
-            romWrite = 0;
             @(posedge clk);
             rst_n = 0;
             repeat (2) @(posedge clk);

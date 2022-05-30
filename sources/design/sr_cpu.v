@@ -12,13 +12,16 @@
 
 module sr_cpu
 (
-    input           clk,        // clock
+    input           clk_in,        // clock
+    input           enable,     // enable
     input           rst_n,      // reset
     input   [ 4:0]  regAddr,    // debug access reg address
     output  [31:0]  regData,    // debug access reg data
     output  [31:0]  imAddr,     // instruction memory address
     input   [31:0]  imData     // instruction memory data
 );
+
+    wire clk = clk_in & enable;
     //control wires
     wire        aluZero;
     wire        aluLess; //BLT
@@ -110,7 +113,7 @@ module sr_cpu
         .rst_i      ( rst_n          ),
         .start_i    ( extReq         ),
         .a_bi       ( rd1[7:0]       ),
-        .b_bi       ( srcB[7:0]      ),
+        .b_bi       ( rd2[7:0]      ),
         .busy_o     ( extBusy        ),
         .y_bo       ( extResult[4:0] )
     );
@@ -133,7 +136,7 @@ module sr_cpu
         .multicycle ( multicycle   )
     );   
     
-    sm_control_mulcycle sm_control_multicycle
+    sm_control_multicycle sm_control_multicycle
     (
         .clk        ( clk          ),
         .rst_n      ( rst_n        ),
@@ -202,15 +205,13 @@ module sr_control
     output reg       aluSrc,
     output reg [1:0] wdSrc,
     output reg [2:0] aluControl,
-    output           multicycle
+    output reg       multicycle
 );    
     reg          branch;
     reg          condZero;
     reg          condLess;
     assign pcSrc = (branch & ((aluZero == condZero) & (aluLess == condLess)));
     
-    reg          multicycle;
-
     always @ (*) begin
         branch      = 1'b0;
         condZero    = 1'b0;
@@ -243,7 +244,7 @@ module sr_control
     
 endmodule
 
-module sr_control_mulcycle_sm
+module sm_control_multicycle
 (
     input   clk,
     input   rst_n,
@@ -252,15 +253,13 @@ module sr_control_mulcycle_sm
     output  extReq, 
     output  pcE
 );
-// multicycle
     localparam MC_IDLE      = 2'b00;
     localparam MC_WORK_PREP = 2'b01;
     localparam MC_WORK      = 2'b10;
     localparam MC_DONE      = 2'b11;
     reg    [1:0] multicycle_state;
-//    reg          multicycle_busy;  
     
-    assign pcE = !(multicycle & multicycle_state != MC_DONE); //multicycle
+    assign pcE = !(multicycle & multicycle_state != MC_DONE);
     assign extReq = multicycle & multicycle_state == MC_IDLE;
     
     always @ (posedge clk or negedge rst_n) begin

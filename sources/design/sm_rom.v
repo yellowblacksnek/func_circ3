@@ -14,32 +14,29 @@ module sm_rom
 )
 (
     input         clk,
-    input         imRst,
-    input  [31:0] aw,
-    input  [31:0] ar,
+//    input         imRst,
+    input  [31:0] wa,
+    input  [31:0] ra,
     input         write_e,
     input  [31:0] wd,
     output [31:0] rd
 );
-    reg [31:0] rom [SIZE - 1:0];
-    assign rd = rom [ar];
+//    (* rom_style = "block" *)
+    reg [31:0] rom [SIZE-1:0];
+    assign rd = rom [ra];
+
+//    reg rst_done;
 
     initial begin
-        $readmemh ("program.data", rom);
+        $readmemh ("program.mem", rom);
+//        rst_done <= 1;
     end
     
-    integer i;
-    always@(posedge clk or posedge imRst)
-    begin
-    if (imRst) 
-      begin
-        for (i=0; i<SIZE - 1; i=i+1) rom[i] <= 32'b0;
-      end
-    else begin
+//    reg [SIZE-1:0] i;
+    always@(posedge clk)
+    begin  
         if(write_e) begin 
-//            $display("writing instr %h", wd);
-            rom[aw] <= wd; 
-        end
+            rom[wa] <= wd; 
         end
     end
 
@@ -55,47 +52,51 @@ module rom_writer
     input               enable,
     input               uart_v,
     input       [ 7:0]  uart_d,
-    output reg  [31:0]  wa,
-    output reg  [31:0]  wd,
-    output wire         we,
-    output reg          imRst = 0
+    output reg  [31:0]  im_wa,
+    output reg  [31:0]  im_wd,
+    output wire         im_we
+//    output reg          im_rst
 );
     reg         ready = 0;
     reg  [ 1:0] counter = 0;
+    reg  [31:0]  im_wd_tmp;
+    reg         rst_done = 0;
+    reg  [31:0] rst_addr = 0;
     
-    wire imRstLatched;
-    sm_active_latch im_rst_latch(clk, rstn, imRst, imRstLatched);
-    
-    assign we = ready;
+    assign im_we = ready;
     
     always @(posedge clk or negedge rstn) begin
         if(!rstn) begin
-//            cur_a <= 0;
-//            cur_d <= 0;
             counter <= 0;   
-            wa <= 0;
-            wd <= 0;
-            imRst <= 0;
-//            we <= 0;
+            im_wa <= 0;
+            im_wd <= 0;
+            ready <= 0;
+//            rst_done <= 0;
         end else begin
             if(enable) begin
-                if(!imRstLatched) imRst <= 1;
-                else imRst <= 0;
-                
-                if(uart_v) begin
-                    case (counter)
-                        0: begin wd[31:24] <= uart_d; ready <= 0; end
-                        1: wd[23:16] <= uart_d;
-                        2: wd[15:8]  <= uart_d;
-                        3: begin wd[7:0]   <= uart_d; ready <= 1; end
-                    endcase
-                    counter <= counter + 1;
-                end
-                if(ready & !imRst) begin
-//                    $display("write instr %h", wd);
-                    wa <= wa + 1;
-                    ready <= 0;
-                end
+//                if(!rst_done) begin 
+//                    ready <= 1;
+//                    im_wa <= im_wa + 1;
+//                    if(im_wa >= SIZE) begin
+//                        im_wa <= 0;
+//                        rst_done <= 1;
+//                        ready <= 0;
+//                    end
+//                end else begin
+                    if(uart_v) begin
+                        case (counter)
+                            2'b00: begin im_wd[31:24] <= uart_d; ready <= 0; end
+                            2'b01: im_wd[23:16] <= uart_d;
+                            2'b10: im_wd[15:8]  <= uart_d;
+                            2'b11: begin im_wd[7:0]   <= uart_d; ready <= 1; end
+                        endcase
+                        counter <= counter + 1;
+                    end
+                    if(ready) begin
+                        im_wa <= im_wa + 1;
+                        ready <= 0;
+                    end
+//                end
             end
         end
     end

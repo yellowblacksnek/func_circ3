@@ -19,13 +19,18 @@ module sm_top
     input           clkEnable,
     output          clk,
     input   [ 4:0 ] regAddr,
-    output  [31:0 ] regData
+    output  [31:0 ] regData,
+    output          romWrite,
+    
+//    input [31:0] romAddr,
+    output [31:0] romData
 );
     //metastability input filters
     wire    [ 3:0 ] devide;
     wire            enable;
     wire    [ 4:0 ] addr;
-    wire            romWrite;
+    //wire            romWrite;
+    
 
     sm_debouncer #(.SIZE(4)) f0(clkIn, clkDevide, devide);
     sm_debouncer #(.SIZE(1)) f1(clkIn, clkEnable, enable);
@@ -35,15 +40,17 @@ module sm_top
 
     //cores
     //clock devider
+    wire enable_and_nowrite = enable & !romWrite;
+    wire clk_temp;
     sm_clk_divider sm_clk_divider
     (
         .clkIn      ( clkIn     ),
         .rst_n      ( rst_n     ),
         .devide     ( devide    ),
-        .enable     ( enable & ~romWrite    ),
+        .enable     ( enable_and_nowrite    ),
         .clkOut     ( clk       )
     );
-    
+//    assign clk = clk_temp & !romWrite;
     //UART receiver
     wire          uart_v;
     wire    [7:0] uart_d;
@@ -56,43 +63,51 @@ module sm_top
      );
 
     //instruction memory
+    wire    [31:0]  imCpuAddr;
+    wire    [31:0]  imCpuData;
+    
     wire    [31:0]  imAddr;
     wire    [31:0]  imData;
-    wire            imRst;
+//    wire            imRst;
     wire    [31:0]  imWriteAddr;
     wire    [31:0]  imWriteData;
     wire            imWe;
-    sm_rom reset_rom
-    (
-         .clk       ( clkIn         ),
-         .imRst     ( imRst         ),
-         .ar        ( imAddr        ),
-         .aw        ( imWriteAddr   ),
-         .write_e   ( imWe      ),
-         .wd        ( imWriteData   ),
-         .rd        ( imData        )
-     );
      
-     rom_writer rom_writer
+    assign imAddr = romWrite ? regAddr : imCpuAddr;
+    assign romData = imData;
+    
+    rom_writer rom_writer
      (
         .clk    ( clkIn    ),
-        .rstn   ( rst_n    ),
+        .rstn   ( rst_n & !romWrite_i   ),
         .enable ( romWrite ),
         .uart_v ( uart_v   ),
         .uart_d ( uart_d   ),
-        .wa     ( imWriteAddr ),
-        .wd     ( imWriteData ),
-        .we     ( imWe      ),
-        .imRst  ( imRst     )    
+        .im_wa ( imWriteAddr ),
+        .im_wd ( imWriteData ),
+        .im_we ( imWe      )
+//        .im_rst( imRst     )    
+     );
+    
+    sm_rom reset_rom
+    (
+         .clk       ( clkIn         ),
+//         .imRst     ( imRst         ),
+         .ra        ( imAddr ),
+         .wa        ( imWriteAddr   ),
+         .write_e   ( imWe      ),
+         .wd        ( imWriteData   ),
+         .rd        ( imData )
      );
 
     sr_cpu sm_cpu
     (
-        .clk        ( clk         ),
+        .clk_in     ( clk         ),
+        .enable     ( !romWrite   ),
         .rst_n      ( rst_n       ),
         .regAddr    ( addr        ),
         .regData    ( regData     ),
-        .imAddr     ( imAddr      ),
+        .imAddr     ( imCpuAddr      ),
         .imData     ( imData      )
     );
 

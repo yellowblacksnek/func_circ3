@@ -64,5 +64,5 @@ test10:     addi a1, a0, -15
             
             beq zero, zero, end
 bad_res:    ebreak
-end:        wfi
+end:        beq zero, zero, start
 
