@@ -32,10 +32,9 @@ module nexys4_ddr
 
     output [ 7:0] AN,
 
-    inout  [12:1] JA,
-    inout  [12:1] JB,
+//    inout  [12:1] JA,
+//    inout  [12:1] JB,
 
-    input         UART_RXD_OUT,
     input         UART_TXD_IN
 );
 
@@ -44,42 +43,46 @@ module nexys4_ddr
     wire          clkIn     =  CLK100MHZ;
     wire          rst_n     =  CPU_RESETN;
     wire          romWrite  =  BTNR;
-    wire          uart_rx_r =  UART_TXD_IN;
-    wire          clkEnable =  SW [9] | BTNU;
-    wire [  3:0 ] clkDevide =  SW [8:5];
+    wire          resetMem  =  BTNC;
+    wire          uart_in =  UART_TXD_IN;
+    wire          clkEnable =  SW [15] | BTNU;
+    wire [  3:0 ] clkDevide =  SW [14:11];
     wire [  4:0 ] regAddr   =  SW [4:0];
-
-    wire [ 31:0 ] regData;
+    wire [ 10:0 ] romAddr   =  SW [10:0];
     
-   // wire [ 31:0 ] romAddr;
+    wire [ 31:0 ] regData;
     wire [ 31:0 ] romData;
+    
     wire romWriteLatched;
+    wire resetMemBusy;
 
     //cores
     sm_top sm_top
     (
         .clkIn      ( clkIn     ),
         .rst_n      ( rst_n     ),
-        .uart_rx_r  ( uart_rx_r ),
+        .uart_in    ( uart_in   ),
         .romWrite_i ( romWrite  ),
         .romWrite   ( romWriteLatched),
+        .resetMem   ( resetMem  ),
+        .resetMemBusy( resetMemBusy  ),
         .romData    ( romData   ),
         .clkDevide  ( clkDevide ),
         .clkEnable  ( clkEnable ),
         .clk        ( clk       ),
         .regAddr    ( regAddr   ),
-        .regData    ( regData   )
+        .regData    ( regData   ),
+        .romAddr    ( romAddr   )
     );
 
     //outputs
     assign LED[15]    = clk;
     assign LED[14:13] = sm_top.rom_writer.counter;
-    assign LED[12:0] = romWriteLatched ? sm_top.rom_writer.im_wa[12:0] : regData[12:0];
+    assign LED[12:0] = romWriteLatched ? sm_top.rom_writer.im_wa[12:0] : sm_top.imCpuAddr;
 
     //hex out
-    wire [ 31:0 ] h7segment;// = regData; //sm_top.romWrite ? sm_top.reset_rom.rom[regAddr] : 
-    assign h7segment = romWriteLatched ? romData : regData; //regAddr used as instruction address
-//    assign h7segment = sm_top.reset_rom.rom[regAddr]; //regAddr used as instruction address
+    wire [ 31:0 ] h7segment;
+    assign h7segment = romWriteLatched ? romData : regData;
     wire clkHex;
 
     sm_clk_divider hex_clk_divider
@@ -102,11 +105,8 @@ module nexys4_ddr
         .anodes         ( AN                             )
     );
 
-    assign LED16_B = 0;
+    assign LED16_R = romWriteLatched ? (resetMemBusy ? 1'b0 : 1'b1) : 1'b0;
+    assign LED16_B = romWriteLatched ? (resetMemBusy ? 1'b1 : 1'b0) : 1'b0;
     assign LED16_G = romWriteLatched ? 1'b0 : 1'b1;
-    assign LED16_R = romWriteLatched ? 1'b1 : 1'b0;
-//    assign LED17_B = 1'b0;
-//    assign LED17_G = 1'b0;
-//    assign LED17_R = 1'b0;
 
 endmodule

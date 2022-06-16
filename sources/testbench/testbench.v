@@ -13,7 +13,7 @@
 `include "sr_cpu.vh"
 
 `ifndef SIMULATION_CYCLES
-    `define SIMULATION_CYCLES 1200000000
+    `define SIMULATION_CYCLES 12000000
 `endif
 
 `define EBREAK 32'b00000000000100000000000001110011
@@ -37,17 +37,26 @@ module sm_testbench;
     reg [31:0] prev; initial prev = 0;
     integer cur_cycles; initial cur_cycles = 0;
     // ***** DUT start ************************
+    
+    wire [31:0] romData;
 
     sm_top sm_top
     (
-        .clkIn     ( clk     ),
-        .rst_n     ( rst_n   ),
-        .clkDevide ( 4'b0    ),
-        .clkEnable ( 1'b1    ),
-        .clk       ( cpuClk  ),
-        .regAddr   ( regAddr ),
-        .regData   ( regData )
+        .clkIn     ( clk        ),
+        .rst_n     ( rst_n      ),
+        .uart_in ( 1'b1 ),
+        .romWrite_i( 1'b0  ),
+        .resetMem ( 1'b0   ),
+        .romData    ( romData   ),
+        .clkDevide ( 4'b0011       ),
+        .clkEnable ( 1'b1       ),
+        .clk       ( cpuClk     ),
+        .romAddr   ( regAddr    ),
+        .regAddr   ( regAddr    ),
+        .regData   ( regData    )
     );
+    
+    wire regWrite = sm_top.sm_cpu.rf.we3;
 
     defparam sm_top.sm_clk_divider.bypass = 1;
 

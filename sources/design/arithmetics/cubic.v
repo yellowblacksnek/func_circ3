@@ -66,8 +66,8 @@ module cubic(
     
     reg mult_start;
     wire mult_busy;
-    wire [15:0] mult_y;
-    wire [7:0] mult_res = mult_y[7:0];
+    wire [5:0] mult_y;
+    wire [7:0] mult_res = mult_y[5:0];
     
     reg mult_done;
     
@@ -81,8 +81,8 @@ module cubic(
     mult mult_inst(
         .clk_i(clk_i),
         .rst_i(rst_i),
-        .a_bi(y2), 
-        .b_bi(y2|inc_mask), 
+        .a_bi(y2[2:0]), 
+        .b_bi(y2[2:0]|inc_mask[2:0]), 
         .start_i(mult_start),
         .busy_o(mult_busy),
         .y_bo(mult_y));  

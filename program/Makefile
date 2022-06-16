@@ -23,8 +23,12 @@ help:
 #    dump .text HexText program.data  - dump segment .text to program.data file in HexText format
 .PHONY: clean blt block
 
+adder:
+	$(RARS) nc a dump .text HexText program.mem adder.S
+	python hex_to_bin.py program.mem program.bin
+
 counter:
-	copy counter.data program.mem
+	$(RARS) nc a dump .text HexText program.mem counter.S
 	python hex_to_bin.py program.mem program.bin
 
 blt: blt.S

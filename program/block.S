@@ -1,45 +1,26 @@
-# RISC-V simple counter program
-#
-# Stanislav Zhelnio, 2020
-#
-
 .text
 
-# start:      mv a0, zero              # t0 = 0
-#             mv a1, zero              # t1 = 0
-#             addi a1, a1, 20
-# counter:    addi a0, a0, 1          # t0 = t0 + 1
-#             blt a0, a1, counter  # if t0 == t1 then counter
-start:  #mv a0, zero  
+start:  mv a0, zero  
 
-test0:  addi a1, zero, 0
+        addi a1, zero, 0
         addi a2, zero, 0
-        mul a0, a1, a2 #0 = 0
 
-test1:  addi a1, zero, 1
-        addi a2, zero, 1
-        mul a0, a1, a2 #2 = 2
+        addi a3, zero, 1
+        addi a4, zero, 1
 
-test2:  addi a1, zero, 255
-        addi a2, zero, 255
-        mul a0, a1, a2 #21 = 15
+        addi a5, zero, 255
+        addi a6, zero, 255
 
-test3:  addi a1, zero, 27
-        addi a2, zero, 16
-        mul a0, a1, a2 #7 = 7
+        addi s2, zero, 28
+        addi s3, zero, 17
 
-test4:  addi a1, zero, 28
-        addi a2, zero, 17
-        mul a0, a1, a2 #7 = 7
-
-test5:  addi a1, zero, 0
-        addi a2, zero, 64
-        mul a0, a1, a2 #8 = 8
-
-test6:  addi a1, zero, 125
-        addi a2, zero, 0
-        mul a0, a1, a2 #5 = 5
+test0:  mul a0, a1, a2 #0 = 0
+test1:  mul a0, a3, a4 #2 = 2
+test2:  mul a0, a5, a6 #21 = 15
+test3:  mul a0, s2, s3 #7 = 7
 
 end:    wfi
+        wfi
+        wfi
         beq zero, zero, start
 

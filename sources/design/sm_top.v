@@ -13,16 +13,18 @@ module sm_top
 (
     input           clkIn,
     input           rst_n,
-    input           uart_rx_r,
+    input           uart_in,
     input           romWrite_i,
+    input           resetMem,
     input   [ 3:0 ] clkDevide,
     input           clkEnable,
     output          clk,
     input   [ 4:0 ] regAddr,
     output  [31:0 ] regData,
+    input   [10:0 ] romAddr,
     output          romWrite,
+    output          resetMemBusy,
     
-//    input [31:0] romAddr,
     output [31:0] romData
 );
     //metastability input filters
@@ -57,23 +59,22 @@ module sm_top
     uart_rx uart_rx
     (
         .i_Clock     ( clkIn     ),
-        .i_Rx_Serial ( uart_rx_r ),
+        .i_Rx_Serial ( uart_in ),
         .o_Rx_DV     ( uart_v    ),
         .o_Rx_Byte   ( uart_d    )
      );
 
     //instruction memory
     wire    [31:0]  imCpuAddr;
-    wire    [31:0]  imCpuData;
+//    wire    [31:0]  imCpuData;
     
     wire    [31:0]  imAddr;
     wire    [31:0]  imData;
-//    wire            imRst;
     wire    [31:0]  imWriteAddr;
     wire    [31:0]  imWriteData;
     wire            imWe;
      
-    assign imAddr = romWrite ? regAddr : imCpuAddr;
+    assign imAddr = romWrite ? romAddr : imCpuAddr;
     assign romData = imData;
     
     rom_writer rom_writer
@@ -81,18 +82,18 @@ module sm_top
         .clk    ( clkIn    ),
         .rstn   ( rst_n & !romWrite_i   ),
         .enable ( romWrite ),
+        .resetMem ( resetMem ),
         .uart_v ( uart_v   ),
         .uart_d ( uart_d   ),
         .im_wa ( imWriteAddr ),
         .im_wd ( imWriteData ),
-        .im_we ( imWe      )
-//        .im_rst( imRst     )    
+        .im_we ( imWe      ),
+        .resetBusy (resetMemBusy)
      );
     
     sm_rom reset_rom
     (
          .clk       ( clkIn         ),
-//         .imRst     ( imRst         ),
          .ra        ( imAddr ),
          .wa        ( imWriteAddr   ),
          .write_e   ( imWe      ),

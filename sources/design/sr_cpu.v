@@ -28,9 +28,11 @@ module sr_cpu
     wire        pcSrc;
     wire        pcE; //multicycle
     wire        regWrite;
+    wire        regWriteExt;
     wire        aluSrc;
     wire  [1:0] wdSrc; //multicycle
     wire  [2:0] aluControl;
+    wire        aluBusy;
 
     //instruction decode wires
     wire [ 6:0] cmdOp;
@@ -84,41 +86,47 @@ module sr_cpu
         .rd1        ( rd1          ),
         .rd2        ( rd2          ),
         .wd3        ( wd3          ),
-        .we3        ( regWrite     )
+        .we3        ( regWrite | regWriteExt )
     );
 
     //debug register access
-    assign regData = (regAddr != 0) ? rd0 : pc;
+    assign regData = (regAddr != 0) ? rd0 : imAddr;
 
     //alu
     wire [31:0] srcB = aluSrc ? immI : rd2;
     wire [31:0] aluResult;
+    wire aluStart;
 
     sr_alu alu (
+        .clk_i      ( clk          ),
+        .rst_n      ( rst_n        ),
+        .start      ( aluStart     ),
         .srcA       ( rd1          ),
         .srcB       ( srcB         ),
         .oper       ( aluControl   ),
         .zero       ( aluZero      ),
         .less       ( aluLess      ), //BLT
-        .result     ( aluResult    ) 
+        .result     ( aluResult    ),
+        .busy       ( aluBusy      )
     );
     
     //ext block
-    wire [31:0] extResult; 
-    assign extResult[31:5] = 27'b0;
-    wire       extReq;
-    wire       extBusy;
-    cbrt_sum_sqrt func_block (
-        .clk_i      ( clk            ),
-        .rst_i      ( rst_n          ),
-        .start_i    ( extReq         ),
-        .a_bi       ( rd1[7:0]       ),
-        .b_bi       ( rd2[7:0]      ),
-        .busy_o     ( extBusy        ),
-        .y_bo       ( extResult[4:0] )
-    );
+//    wire [31:0] extResult; 
+//    assign extResult[31:5] = 27'b0;
+//    wire       extReq;
+//    wire       extBusy;
+//    cbrt_sum_sqrt func_block (
+//        .clk_i      ( clk            ),
+//        .rst_i      ( rst_n          ),
+//        .start_i    ( extReq         ),
+//        .a_bi       ( rd1[7:0]       ),
+//        .b_bi       ( rd2[7:0]      ),
+//        .busy_o     ( extBusy        ),
+//        .y_bo       ( extResult[4:0] )
+//    );
 
-    assign wd3 = wdSrc == `WDSRC_IMMU ? immU : (wdSrc == `WDSRC_ALU ? aluResult : extResult);
+    //assign wd3 = wdSrc == `WDSRC_IMMU ? immU : (wdSrc == `WDSRC_ALU ? aluResult : extResult);
+    assign wd3 = wdSrc == `WDSRC_IMMU ? immU : aluResult;
     
     wire multicycle;
     //control
@@ -140,10 +148,11 @@ module sr_cpu
     (
         .clk        ( clk          ),
         .rst_n      ( rst_n        ),
-        .extBusy    ( extBusy      ),
-        .extReq     ( extReq       ),
+        .aluBusy    ( aluBusy      ),
+        .aluStart   ( aluStart     ),
         .pcE        ( pcE          ),
-        .multicycle ( multicycle   )
+        .multicycle ( multicycle   ),
+        .regWrite   ( regWriteExt  )
     );
 
 endmodule
@@ -236,7 +245,7 @@ module sr_control
             { `RVF7_ANY,  `RVF3_BNE,  `RVOP_BNE  } : begin branch = 1'b1; aluControl = `ALU_SUB; end
             { `RVF7_ANY,  `RVF3_BLT,  `RVOP_BLT  } : begin branch = 1'b1; condLess = 1'b1; aluControl = `ALU_SUB; end //BLT
             
-            { `RVF7_MUL,  `RVF3_MUL,  `RVOP_MUL  } : begin multicycle  = 1'b1; regWrite = 1'b1; wdSrc  = `WDSRC_EXT; end
+            { `RVF7_MUL,  `RVF3_MUL,  `RVOP_MUL  } : begin multicycle  = 1'b1; aluControl  = `ALU_EXT; end
 
         endcase
     end
@@ -249,9 +258,10 @@ module sm_control_multicycle
     input   clk,
     input   rst_n,
     input   multicycle,
-    input   extBusy,
-    output  extReq, 
-    output  pcE
+    input   aluBusy,
+    output  aluStart, 
+    output  pcE,
+    output  reg regWrite
 );
     localparam MC_IDLE      = 2'b00;
     localparam MC_WORK_PREP = 2'b01;
@@ -260,11 +270,12 @@ module sm_control_multicycle
     reg    [1:0] multicycle_state;
     
     assign pcE = !(multicycle & multicycle_state != MC_DONE);
-    assign extReq = multicycle & multicycle_state == MC_IDLE;
-    
+    assign aluStart = multicycle & multicycle_state == MC_IDLE;
+        
     always @ (posedge clk or negedge rst_n) begin
         if(!rst_n) begin
             multicycle_state <= MC_IDLE;
+            regWrite <= 0;
         end
         else begin
             case (multicycle_state)
@@ -274,11 +285,15 @@ module sm_control_multicycle
                     end      
                 MC_WORK:
                     begin
-                        if(!extBusy) multicycle_state <= MC_DONE;
+                        if(!aluBusy) begin
+                            multicycle_state <= MC_DONE;
+                            regWrite <= 1;
+                        end
                     end
                 MC_DONE:
                     begin
                         multicycle_state <= MC_IDLE;
+                        regWrite <= 0;
                     end
             endcase
         end
@@ -286,31 +301,91 @@ module sm_control_multicycle
 
 endmodule
 
-module sr_alu
-(
-    input  [31:0] srcA,
-    input  [31:0] srcB,
-    input  [ 2:0] oper,
-    output        zero,
-    output        less, //BLT
-    output reg [31:0] result //BLT (extra bit)
-);
-    always @ (*) begin
-        case (oper)
-            default   : result = srcA + srcB;
-            `ALU_ADD  : result = srcA + srcB;
-            `ALU_OR   : result = srcA | srcB;
-            `ALU_SRL  : result = srcA >> srcB [4:0];
-            `ALU_SLTU : result = (srcA < srcB) ? 1 : 0;
-            `ALU_SUB : result = srcA - srcB;
-        endcase
-    end
+//module sr_alu
+//(
+//    input         clk_i,
+//    input         rst_n,
+//    input  [31:0] srcA,
+//    input  [31:0] srcB,
+//    input  [ 2:0] oper,
+//    output        zero,
+//    output        less, //BLT
+//    output reg [31:0] result, //BLT (extra bit)
+//    output reg    res_done
+//);
+//    wire [2:0] cbrt_a;
+//    wire [3:0] sqrt_b;
 
-    assign zero   = (result == 0);
-    assign less = 
-        (srcA[31] == srcB[31] ? (srcA < srcB) :
-        (srcA[31] == 1 ? 1 : 0));
-endmodule
+//    reg start_ext;
+//    reg [1:0] ext_state;
+    
+//    always @ (*) begin
+//        case (oper)
+//            default   : result = srcA + srcB;
+//            `ALU_ADD  : result = srcA + srcB;
+//            `ALU_OR   : result = srcA | srcB;
+//            `ALU_SRL  : result = srcA >> srcB [4:0];
+//            `ALU_SLTU : result = (srcA < srcB) ? 1 : 0;
+//            `ALU_SUB : result = srcA - srcB;
+//            `ALU_EXT : result = cbrt_a + sqrt_b;
+//        endcase
+//    end
+    
+//    always @(posedge clk_i) begin
+//        if(oper == `ALU_EXT) begin
+//            case (ext_state)
+//                2'b00: begin
+                
+//                end
+//            endcase
+//        end
+//    end
+    
+    
+
+//    assign zero   = (result == 0);
+//    assign less = 
+//        (srcA[31] == srcB[31] ? (srcA < srcB) :
+//        (srcA[31] == 1 ? 1 : 0));
+        
+//    wire cbrt_busy;
+//    wire [16:0] cubic_as;
+//    wire [7:0] cubic_as_res;
+//    assign cubic_as_res = cubic_as[16] ? cubic_as[15:8] + cubic_as[7:0] : cubic_as[15:8] - cubic_as[7:0];
+//    cubic cubic(
+//        .clk_i(clk_i),
+//        .rst_i(rst_n),
+//        .x_bi(srcA), 
+//        .start_i(start_ext),
+//        .busy_o(cbrt_busy),
+//        .y_bo(cbrt_a),
+        
+//        .addsub_ready(1'b1),
+//        .addsub_res(cubic_as_res),
+////        .addsub_req(addsub_req[1]),
+//        .addsub_mode(cubic_as[16]),
+//        .addsub_a(cubic_as[15:8]),
+//        .addsub_b(cubic_as[7:0]));
+        
+//    wire sqrt_busy;
+//    wire [16:0] sqrt_as;
+//    wire [7:0] sqrt_as_res;
+//    assign sqrt_as_res = sqrt_as[16] ? sqrt_as[15:8] + sqrt_as[7:0] : sqrt_as[15:8] - sqrt_as[7:0];
+//    sqrt sqrt_inst(
+//        .clk_i(clk_i),
+//        .rst_i(rst_n),
+//        .x_bi(srcB), 
+//        .start_i(start_ext),
+//        .busy_o(sqrt_busy),
+//        .y_bo(sqrt_b),
+        
+//        .addsub_ready(1'b1),
+//        .addsub_res(sqrt_as_res),
+////        .addsub_req(addsub_req[2]),
+//        .addsub_mode(sqrt_as[16]),
+//        .addsub_a(sqrt_as[15:8]),
+//        .addsub_b(sqrt_as[7:0]));  
+//endmodule
 
 module sm_register_file
 (

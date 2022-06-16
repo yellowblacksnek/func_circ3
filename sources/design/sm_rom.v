@@ -14,25 +14,20 @@ module sm_rom
 )
 (
     input         clk,
-//    input         imRst,
     input  [31:0] wa,
     input  [31:0] ra,
     input         write_e,
     input  [31:0] wd,
     output [31:0] rd
 );
-//    (* rom_style = "block" *)
     reg [31:0] rom [SIZE-1:0];
     assign rd = rom [ra];
 
-//    reg rst_done;
 
     initial begin
         $readmemh ("program.mem", rom);
-//        rst_done <= 1;
     end
     
-//    reg [SIZE-1:0] i;
     always@(posedge clk)
     begin  
         if(write_e) begin 
@@ -50,20 +45,28 @@ module rom_writer
     input               clk,
     input               rstn,
     input               enable,
+    input               resetMem,
     input               uart_v,
     input       [ 7:0]  uart_d,
     output reg  [31:0]  im_wa,
     output reg  [31:0]  im_wd,
-    output wire         im_we
+    output wire         im_we,
+    output              resetBusy
 //    output reg          im_rst
 );
     reg         ready = 0;
     reg  [ 1:0] counter = 0;
-    reg  [31:0]  im_wd_tmp;
     reg         rst_done = 0;
     reg  [31:0] rst_addr = 0;
     
     assign im_we = ready;
+    
+    localparam RST_IDLE =   2'b00;
+    localparam RST_ACTIVE = 2'b01;
+    localparam RST_DONE =   2'b10;
+
+    reg  [1:0] rst_state;
+    assign resetBusy = (rst_state != RST_IDLE);
     
     always @(posedge clk or negedge rstn) begin
         if(!rstn) begin
@@ -71,32 +74,44 @@ module rom_writer
             im_wa <= 0;
             im_wd <= 0;
             ready <= 0;
+            rst_state <= RST_IDLE;
 //            rst_done <= 0;
         end else begin
             if(enable) begin
-//                if(!rst_done) begin 
-//                    ready <= 1;
-//                    im_wa <= im_wa + 1;
-//                    if(im_wa >= SIZE) begin
-//                        im_wa <= 0;
-//                        rst_done <= 1;
-//                        ready <= 0;
-//                    end
-//                end else begin
-                    if(uart_v) begin
-                        case (counter)
-                            2'b00: begin im_wd[31:24] <= uart_d; ready <= 0; end
-                            2'b01: im_wd[23:16] <= uart_d;
-                            2'b10: im_wd[15:8]  <= uart_d;
-                            2'b11: begin im_wd[7:0]   <= uart_d; ready <= 1; end
-                        endcase
-                        counter <= counter + 1;
+                case (rst_state)
+                RST_IDLE:
+                    if(resetMem) begin 
+                        rst_state <= RST_ACTIVE;
+                        ready <= 1;
+                        im_wa <= 0;
+                        im_wd <= 0;
+                    end else begin
+                        if(uart_v) begin
+                            case (counter)
+                                2'b00: begin im_wd[31:24] <= uart_d; ready <= 0; end
+                                2'b01: im_wd[23:16] <= uart_d;
+                                2'b10: im_wd[15:8]  <= uart_d;
+                                2'b11: begin im_wd[7:0]   <= uart_d; ready <= 1; end
+                            endcase
+                            counter <= counter + 1;
+                        end
+                        if(ready) begin
+                            im_wa <= im_wa + 1;
+                            ready <= 0;
+                        end
                     end
-                    if(ready) begin
-                        im_wa <= im_wa + 1;
+                RST_ACTIVE:
+                    begin
+                        if(im_wa >= SIZE) rst_state <= RST_DONE;
+                        else im_wa <= im_wa + 1;
+                    end
+                RST_DONE:
+                    begin
+                        rst_state <= RST_IDLE;
+                        im_wa <= 0;
                         ready <= 0;
                     end
-//                end
+                endcase
             end
         end
     end

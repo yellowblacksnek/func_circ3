@@ -23,28 +23,28 @@
 module mult(
     input clk_i ,
     input rst_i ,
-    input [ 7 : 0 ] a_bi ,
-    input [ 7 : 0 ] b_bi ,
+    input [ 2 : 0 ] a_bi ,
+    input [ 2 : 0 ] b_bi ,
     input start_i ,
     output busy_o ,
-    output reg [ 15 : 0 ] y_bo
+    output reg [ 5 : 0 ] y_bo
     );
     
     localparam IDLE = 2'b00;
     localparam WORK = 2'b01;
     localparam READY = 2'b10;
     
-    reg [ 2 : 0 ] ctr ;
-    wire [ 2 : 0 ] end_step ;
-    wire [ 7 : 0 ] part_sum ;
-    wire [ 15 : 0 ] shifted_part_sum ;
-    reg [ 7 : 0 ] a , b ;
-    reg [ 15 : 0 ] part_res ;
+    reg [ 1 : 0 ] ctr ;
+    wire end_step ;
+    wire [ 2 : 0 ] part_sum ;
+    wire [ 5 : 0 ] shifted_part_sum ;
+    reg [ 2 : 0 ] a , b ;
+    reg [ 5 : 0 ] part_res ;
     reg [1:0] state ;
     
-    assign part_sum = a & {8{b[ctr]} } ;
+    assign part_sum = a & {3{b[ctr]} } ;
     assign shifted_part_sum = part_sum << ctr ;
-    assign end_step = ( ctr == 3'h7 ) ;
+    assign end_step = ( ctr == 2'h3 ) ;
     assign busy_o = (state != IDLE);
 
     always @(posedge clk_i or negedge rst_i)

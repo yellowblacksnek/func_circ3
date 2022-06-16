@@ -23,6 +23,9 @@ module uart_tb;
     wire [31:0] regData;
     wire        cpuClk;
     
+    reg resetMem;
+    wire resetMemBusy;
+    
     reg         uartSerial = 1;
     reg         romWrite = 0;
 //    reg   [7:0] dataByte;
@@ -39,14 +42,17 @@ module uart_tb;
     (
         .clkIn     ( clk        ),
         .rst_n     ( rst_n      ),
-        .uart_rx_r ( uartSerial ),
+        .uart_in ( uartSerial ),
         .romWrite_i( romWrite   ),
+        .resetMem ( resetMem   ),
         .romData    ( romData   ),
         .clkDevide ( 4'b0011       ),
         .clkEnable ( 1'b1       ),
         .clk       ( cpuClk     ),
+        .romAddr   ( regAddr    ),
         .regAddr   ( regAddr    ),
-        .regData   ( regData    )
+        .regData   ( regData    ),
+        .resetMemBusy (resetMemBusy)
     );
 
     defparam sm_top.sm_clk_divider.bypass = 1;
@@ -195,8 +201,11 @@ module uart_tb;
         
         if(cycle > 20) begin
             romWrite = 1;
+            resetMem = 1;
             repeat (1) @(posedge clk);
             romWrite = 0;
+            repeat (4) @(posedge clk);
+            resetMem = 0;
             
             $readmemh ("f.data", NEW_MEM);
             
@@ -214,7 +223,7 @@ module uart_tb;
             cycle = cycle + 1;
             rst_counts = rst_counts + 1;
         end
-        if(rst_counts > 4) stop = 1;
+        if(rst_counts > 2) stop = 1;
         if(stop) begin
             cycle = 0;
             if(stop) $display ("Stopped"); else $display ("Timeout");
