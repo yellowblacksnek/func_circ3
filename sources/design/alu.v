@@ -14,26 +14,16 @@ module sr_alu
 (
     input         clk_i,
     input         rst_n,
-    input         start,
+//    input         start,
     input  [31:0] srcA,
     input  [31:0] srcB,
     input  [ 2:0] oper,
     output        zero,
     output        less, //BLT
     output reg [31:0] result,
-    output        busy
+    output        done
 );  
-    wire multicycle = oper == `ALU_EXT;
-    
-    reg [1:0] sm_state;
-    localparam IDLE = 2'b00 ;
-    localparam WORK = 2'b01 ;
-    localparam READY = 2'b10;
-    localparam DONE = 2'b11;
-    
-//    wire start_ext = multicycle & sm_state == IDLE;
-    assign busy = sm_state != IDLE;
-    
+
     reg  [64:0] as_bus;
     wire [31:0] as_res;
 
@@ -47,6 +37,7 @@ module sr_alu
     wire [16:0] sm_as_bus;
     
     always @ (*) begin
+        as_bus = {65{1'b0}};
         case (oper)
             default:    begin
                 as_bus[64] = 1;
@@ -84,6 +75,16 @@ module sr_alu
     assign less = 
         (srcA[31] == srcB[31] ? (srcA < srcB) :
         (srcA[31] == 1 ? 1 : 0));
+        
+    wire multicycle = oper == `ALU_EXT;
+    
+    reg [1:0] sm_state;
+    localparam IDLE = 2'b00 ;
+    localparam WORK = 2'b01 ;
+    localparam DONE = 2'b11;
+    
+    wire start = multicycle & sm_state == IDLE;
+    assign done = sm_state == DONE;
     
     wire [2:0] cbrt_a;
     wire [3:0] sqrt_b;
@@ -110,11 +111,11 @@ module sr_alu
     always @(posedge clk_i) begin
         if(multicycle) begin
             case (sm_state)
-                IDLE: if(start) sm_state <= WORK;
+                IDLE: sm_state <= WORK; //if(start) 
                 WORK: begin
-                        if(both_done) sm_state <= IDLE;
+                        if(both_done) sm_state <= DONE;
                       end
-//                READY: sm_state <= IDLE;
+                DONE: sm_state <= IDLE;
             endcase
         end
     end

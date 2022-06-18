@@ -77,8 +77,8 @@ module nexys4_ddr
 
     //outputs
     assign LED[15]    = clk;
-    assign LED[14:13] = sm_top.rom_writer.counter;
-    assign LED[12:0] = romWriteLatched ? sm_top.rom_writer.im_wa[12:0] : sm_top.imCpuAddr;
+//    assign LED[14:13] = sm_top.rom_writer.counter;
+    assign LED[14:0] = romWriteLatched ? sm_top.rom_writer.im_wa[14:0] : sm_top.imCpuAddr[14:0];
 
     //hex out
     wire [ 31:0 ] h7segment;

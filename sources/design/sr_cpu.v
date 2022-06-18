@@ -32,7 +32,7 @@ module sr_cpu
     wire        aluSrc;
     wire  [1:0] wdSrc; //multicycle
     wire  [2:0] aluControl;
-    wire        aluBusy;
+    wire        aluDone;
 
     //instruction decode wires
     wire [ 6:0] cmdOp;
@@ -86,7 +86,7 @@ module sr_cpu
         .rd1        ( rd1          ),
         .rd2        ( rd2          ),
         .wd3        ( wd3          ),
-        .we3        ( regWrite | regWriteExt )
+        .we3        ( regWrite     )
     );
 
     //debug register access
@@ -100,14 +100,14 @@ module sr_cpu
     sr_alu alu (
         .clk_i      ( clk          ),
         .rst_n      ( rst_n        ),
-        .start      ( aluStart     ),
+//        .start      ( aluStart     ),
         .srcA       ( rd1          ),
         .srcB       ( srcB         ),
         .oper       ( aluControl   ),
         .zero       ( aluZero      ),
         .less       ( aluLess      ), //BLT
         .result     ( aluResult    ),
-        .busy       ( aluBusy      )
+        .done       ( aluDone      )
     );
     
     //ext block
@@ -136,24 +136,26 @@ module sr_cpu
         .cmdF7      ( cmdF7        ),
         .aluZero    ( aluZero      ),
         .aluLess    ( aluLess      ), //BLT
+        .aluDone    ( aluDone      ),
         .pcSrc      ( pcSrc        ),
         .regWrite   ( regWrite     ),
         .aluSrc     ( aluSrc       ),
         .wdSrc      ( wdSrc        ),
         .aluControl ( aluControl   ),
-        .multicycle ( multicycle   )
+//        .multicycle ( multicycle   ),
+        .pcE        ( pcE          )
     );   
     
-    sm_control_multicycle sm_control_multicycle
-    (
-        .clk        ( clk          ),
-        .rst_n      ( rst_n        ),
-        .aluBusy    ( aluBusy      ),
-        .aluStart   ( aluStart     ),
-        .pcE        ( pcE          ),
-        .multicycle ( multicycle   ),
-        .regWrite   ( regWriteExt  )
-    );
+//    sm_control_multicycle sm_control_multicycle
+//    (
+//        .clk        ( clk          ),
+//        .rst_n      ( rst_n        ),
+//        .aluBusy    ( aluBusy      ),
+//        .aluStart   ( aluStart     ),
+//        .pcE        ( pcE          ),
+//        .multicycle ( multicycle   ),
+//        .regWrite   ( regWriteExt  )
+//    );
 
 endmodule
 
@@ -209,12 +211,14 @@ module sr_control
     input     [ 6:0] cmdF7,
     input            aluZero,
     input            aluLess, //BLT
+    input            aluDone,
     output           pcSrc, 
     output reg       regWrite, 
     output reg       aluSrc,
     output reg [1:0] wdSrc,
     output reg [2:0] aluControl,
-    output reg       multicycle
+//    output reg       multicycle,
+    output reg       pcE
 );    
     reg          branch;
     reg          condZero;
@@ -229,7 +233,7 @@ module sr_control
         aluSrc      = 1'b0;
         wdSrc       = `WDSRC_ALU;
         aluControl  = `ALU_ADD;
-        multicycle  = 1'b0;
+        pcE         = 1'b1;
 
         casez( {cmdF7, cmdF3, cmdOp} )
             { `RVF7_ADD,  `RVF3_ADD,  `RVOP_ADD  } : begin regWrite = 1'b1; aluControl = `ALU_ADD;  end
@@ -245,147 +249,17 @@ module sr_control
             { `RVF7_ANY,  `RVF3_BNE,  `RVOP_BNE  } : begin branch = 1'b1; aluControl = `ALU_SUB; end
             { `RVF7_ANY,  `RVF3_BLT,  `RVOP_BLT  } : begin branch = 1'b1; condLess = 1'b1; aluControl = `ALU_SUB; end //BLT
             
-            { `RVF7_MUL,  `RVF3_MUL,  `RVOP_MUL  } : begin multicycle  = 1'b1; aluControl  = `ALU_EXT; end
+            { `RVF7_MUL,  `RVF3_MUL,  `RVOP_MUL  } : begin 
+                aluControl  = `ALU_EXT; 
+                if(!aluDone) begin pcE = 1'b0; regWrite = 1'b0; end
+                else         begin pcE = 1'b1; regWrite = 1'b1; end
+            end
 
         endcase
     end
     
     
 endmodule
-
-module sm_control_multicycle
-(
-    input   clk,
-    input   rst_n,
-    input   multicycle,
-    input   aluBusy,
-    output  aluStart, 
-    output  pcE,
-    output  reg regWrite
-);
-    localparam MC_IDLE      = 2'b00;
-    localparam MC_WORK_PREP = 2'b01;
-    localparam MC_WORK      = 2'b10;
-    localparam MC_DONE      = 2'b11;
-    reg    [1:0] multicycle_state;
-    
-    assign pcE = !(multicycle & multicycle_state != MC_DONE);
-    assign aluStart = multicycle & multicycle_state == MC_IDLE;
-        
-    always @ (posedge clk or negedge rst_n) begin
-        if(!rst_n) begin
-            multicycle_state <= MC_IDLE;
-            regWrite <= 0;
-        end
-        else begin
-            case (multicycle_state)
-                MC_IDLE: 
-                    begin
-                        if(multicycle) multicycle_state <= MC_WORK;
-                    end      
-                MC_WORK:
-                    begin
-                        if(!aluBusy) begin
-                            multicycle_state <= MC_DONE;
-                            regWrite <= 1;
-                        end
-                    end
-                MC_DONE:
-                    begin
-                        multicycle_state <= MC_IDLE;
-                        regWrite <= 0;
-                    end
-            endcase
-        end
-    end
-
-endmodule
-
-//module sr_alu
-//(
-//    input         clk_i,
-//    input         rst_n,
-//    input  [31:0] srcA,
-//    input  [31:0] srcB,
-//    input  [ 2:0] oper,
-//    output        zero,
-//    output        less, //BLT
-//    output reg [31:0] result, //BLT (extra bit)
-//    output reg    res_done
-//);
-//    wire [2:0] cbrt_a;
-//    wire [3:0] sqrt_b;
-
-//    reg start_ext;
-//    reg [1:0] ext_state;
-    
-//    always @ (*) begin
-//        case (oper)
-//            default   : result = srcA + srcB;
-//            `ALU_ADD  : result = srcA + srcB;
-//            `ALU_OR   : result = srcA | srcB;
-//            `ALU_SRL  : result = srcA >> srcB [4:0];
-//            `ALU_SLTU : result = (srcA < srcB) ? 1 : 0;
-//            `ALU_SUB : result = srcA - srcB;
-//            `ALU_EXT : result = cbrt_a + sqrt_b;
-//        endcase
-//    end
-    
-//    always @(posedge clk_i) begin
-//        if(oper == `ALU_EXT) begin
-//            case (ext_state)
-//                2'b00: begin
-                
-//                end
-//            endcase
-//        end
-//    end
-    
-    
-
-//    assign zero   = (result == 0);
-//    assign less = 
-//        (srcA[31] == srcB[31] ? (srcA < srcB) :
-//        (srcA[31] == 1 ? 1 : 0));
-        
-//    wire cbrt_busy;
-//    wire [16:0] cubic_as;
-//    wire [7:0] cubic_as_res;
-//    assign cubic_as_res = cubic_as[16] ? cubic_as[15:8] + cubic_as[7:0] : cubic_as[15:8] - cubic_as[7:0];
-//    cubic cubic(
-//        .clk_i(clk_i),
-//        .rst_i(rst_n),
-//        .x_bi(srcA), 
-//        .start_i(start_ext),
-//        .busy_o(cbrt_busy),
-//        .y_bo(cbrt_a),
-        
-//        .addsub_ready(1'b1),
-//        .addsub_res(cubic_as_res),
-////        .addsub_req(addsub_req[1]),
-//        .addsub_mode(cubic_as[16]),
-//        .addsub_a(cubic_as[15:8]),
-//        .addsub_b(cubic_as[7:0]));
-        
-//    wire sqrt_busy;
-//    wire [16:0] sqrt_as;
-//    wire [7:0] sqrt_as_res;
-//    assign sqrt_as_res = sqrt_as[16] ? sqrt_as[15:8] + sqrt_as[7:0] : sqrt_as[15:8] - sqrt_as[7:0];
-//    sqrt sqrt_inst(
-//        .clk_i(clk_i),
-//        .rst_i(rst_n),
-//        .x_bi(srcB), 
-//        .start_i(start_ext),
-//        .busy_o(sqrt_busy),
-//        .y_bo(sqrt_b),
-        
-//        .addsub_ready(1'b1),
-//        .addsub_res(sqrt_as_res),
-////        .addsub_req(addsub_req[2]),
-//        .addsub_mode(sqrt_as[16]),
-//        .addsub_a(sqrt_as[15:8]),
-//        .addsub_b(sqrt_as[7:0]));  
-//endmodule
 
 module sm_register_file
 (
