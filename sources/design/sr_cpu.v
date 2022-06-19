@@ -29,10 +29,10 @@ module sr_cpu
     wire        pcE; //multicycle
     wire        regWrite;
     wire        regWriteExt;
-    wire        aluSrc;
-    wire  [1:0] wdSrc; //multicycle
+    wire  [1:0] aluSrc;
+    wire        wdSrc; //multicycle
     wire  [2:0] aluControl;
-    wire        aluDone;
+    wire        extDone;
 
     //instruction decode wires
     wire [ 6:0] cmdOp;
@@ -93,42 +93,42 @@ module sr_cpu
     assign regData = (regAddr != 0) ? rd0 : imAddr;
 
     //alu
-    wire [31:0] srcB = aluSrc ? immI : rd2;
+    wire [7:0] extA;
+    wire [7:0] extB;
+    
+    wire [31:0] srcA;
+    wire [31:0] srcB;
+    assign srcA = aluSrc == `ALUSRC_EXT ? extA : rd1;
+    assign srcB = aluSrc == `ALUSRC_EXT ? extB : (aluSrc == `ALUSRC_IMMI ? immI : rd2);
     wire [31:0] aluResult;
-    wire aluStart;
-
+    
     sr_alu alu (
-        .clk_i      ( clk          ),
-        .rst_n      ( rst_n        ),
-//        .start      ( aluStart     ),
-        .srcA       ( rd1          ),
+        .srcA       ( srcA         ),
         .srcB       ( srcB         ),
         .oper       ( aluControl   ),
         .zero       ( aluZero      ),
         .less       ( aluLess      ), //BLT
-        .result     ( aluResult    ),
-        .done       ( aluDone      )
+        .result     ( aluResult    )
     );
     
     //ext block
-//    wire [31:0] extResult; 
-//    assign extResult[31:5] = 27'b0;
-//    wire       extReq;
-//    wire       extBusy;
-//    cbrt_sum_sqrt func_block (
-//        .clk_i      ( clk            ),
-//        .rst_i      ( rst_n          ),
-//        .start_i    ( extReq         ),
-//        .a_bi       ( rd1[7:0]       ),
-//        .b_bi       ( rd2[7:0]      ),
-//        .busy_o     ( extBusy        ),
-//        .y_bo       ( extResult[4:0] )
-//    );
+    wire extMode; 
+    wire multicycle;
+    cbrt_sqrt func_block (
+        .clk_i      ( clk            ),
+        .rst_i      ( rst_n          ),
+        .start_i    ( multicycle     ),
+        .a_bi       ( rd1[7:0]       ),
+        .b_bi       ( rd2[7:0]       ),
+        .done       ( extDone        ),
+        .alu_res    ( aluResult[7:0] ),
+        .alu_mode   ( extMode        ),
+        .alu_a      ( extA           ),
+        .alu_b      ( extB           )
+    );
 
-    //assign wd3 = wdSrc == `WDSRC_IMMU ? immU : (wdSrc == `WDSRC_ALU ? aluResult : extResult);
     assign wd3 = wdSrc == `WDSRC_IMMU ? immU : aluResult;
     
-    wire multicycle;
     //control
     sr_control sm_control (
         .cmdOp      ( cmdOp        ),
@@ -136,26 +136,16 @@ module sr_cpu
         .cmdF7      ( cmdF7        ),
         .aluZero    ( aluZero      ),
         .aluLess    ( aluLess      ), //BLT
-        .aluDone    ( aluDone      ),
+        .extDone    ( extDone      ),
+        .extMode    ( extMode      ),
         .pcSrc      ( pcSrc        ),
         .regWrite   ( regWrite     ),
         .aluSrc     ( aluSrc       ),
         .wdSrc      ( wdSrc        ),
         .aluControl ( aluControl   ),
-//        .multicycle ( multicycle   ),
+        .multicycle ( multicycle   ),
         .pcE        ( pcE          )
     );   
-    
-//    sm_control_multicycle sm_control_multicycle
-//    (
-//        .clk        ( clk          ),
-//        .rst_n      ( rst_n        ),
-//        .aluBusy    ( aluBusy      ),
-//        .aluStart   ( aluStart     ),
-//        .pcE        ( pcE          ),
-//        .multicycle ( multicycle   ),
-//        .regWrite   ( regWriteExt  )
-//    );
 
 endmodule
 
@@ -211,13 +201,14 @@ module sr_control
     input     [ 6:0] cmdF7,
     input            aluZero,
     input            aluLess, //BLT
-    input            aluDone,
+    input            extDone,
+    input            extMode,
     output           pcSrc, 
     output reg       regWrite, 
-    output reg       aluSrc,
-    output reg [1:0] wdSrc,
+    output reg [1:0] aluSrc,
+    output reg       wdSrc,
     output reg [2:0] aluControl,
-//    output reg       multicycle,
+    output reg       multicycle,
     output reg       pcE
 );    
     reg          branch;
@@ -230,9 +221,10 @@ module sr_control
         condZero    = 1'b0;
         condLess    = 1'b0; //BLT
         regWrite    = 1'b0;
-        aluSrc      = 1'b0;
+        aluSrc      = `ALUSRC_RD2;
         wdSrc       = `WDSRC_ALU;
         aluControl  = `ALU_ADD;
+        multicycle = 1'b0;
         pcE         = 1'b1;
 
         casez( {cmdF7, cmdF3, cmdOp} )
@@ -242,7 +234,7 @@ module sr_control
             { `RVF7_SLTU, `RVF3_SLTU, `RVOP_SLTU } : begin regWrite = 1'b1; aluControl = `ALU_SLTU; end
             { `RVF7_SUB,  `RVF3_SUB,  `RVOP_SUB  } : begin regWrite = 1'b1; aluControl = `ALU_SUB;  end
 
-            { `RVF7_ANY,  `RVF3_ADDI, `RVOP_ADDI } : begin regWrite = 1'b1; aluSrc = 1'b1; aluControl = `ALU_ADD; end
+            { `RVF7_ANY,  `RVF3_ADDI, `RVOP_ADDI } : begin regWrite = 1'b1; aluSrc = `ALUSRC_IMMI; aluControl = `ALU_ADD; end
             { `RVF7_ANY,  `RVF3_ANY,  `RVOP_LUI  } : begin regWrite = 1'b1; wdSrc  = `WDSRC_IMMU; end
 
             { `RVF7_ANY,  `RVF3_BEQ,  `RVOP_BEQ  } : begin branch = 1'b1; condZero = 1'b1; aluControl = `ALU_SUB; end
@@ -250,9 +242,14 @@ module sr_control
             { `RVF7_ANY,  `RVF3_BLT,  `RVOP_BLT  } : begin branch = 1'b1; condLess = 1'b1; aluControl = `ALU_SUB; end //BLT
             
             { `RVF7_MUL,  `RVF3_MUL,  `RVOP_MUL  } : begin 
-                aluControl  = `ALU_EXT; 
-                if(!aluDone) begin pcE = 1'b0; regWrite = 1'b0; end
+                multicycle = 1'b1;
+                aluSrc = `ALUSRC_EXT;
+                
+                if(!extDone) begin pcE = 1'b0; regWrite = 1'b0; end
                 else         begin pcE = 1'b1; regWrite = 1'b1; end
+                
+                if(extMode) aluControl  = `ALU_ADD; 
+                else        aluControl  = `ALU_SUB; 
             end
 
         endcase

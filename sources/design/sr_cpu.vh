@@ -56,8 +56,11 @@
 `define RVF7_MUL    7'b0000001 //BLOCK
 
 // wdSrc
-`define WDSRC_ALU   2'b00
-`define WDSRC_IMMU  2'b01
-`define WDSRC_EXT   2'b10
+`define WDSRC_ALU   1'b0
+`define WDSRC_IMMU  1'b1
 
+// aluSrc
+`define ALUSRC_RD2   2'b00
+`define ALUSRC_IMMI  2'b01
+`define ALUSRC_EXT   2'b10
 
